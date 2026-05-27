@@ -1,0 +1,21 @@
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: securetransfer
+  namespace: securetransfer
+  annotations:
+    # Kein Timeout-Limit für lange Up-/Download-Verbindungen
+    haproxy.router.openshift.io/timeout: 3600s
+spec:
+  host: securetransfer.apps.your-cluster.example.com  # <-- Hostname anpassen
+  to:
+    kind: Service
+    name: frontend
+    weight: 100
+  port:
+    targetPort: https
+  tls:
+    # passthrough: OpenShift leitet TLS direkt an den nginx-Container weiter.
+    # HTTP/2 bleibt End-to-End erhalten (für Upload-Streaming erforderlich).
+    termination: passthrough
+    insecureEdgeTerminationPolicy: Redirect

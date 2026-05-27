@@ -1,0 +1,34 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: securetransfer
+  namespace: securetransfer
+  annotations:
+    # Kein Limit für Uploads (große Dateien bis 10 GB+)
+    nginx.ingress.kubernetes.io/proxy-body-size: "0"
+    # Streaming: kein Buffering für Up- und Download
+    nginx.ingress.kubernetes.io/proxy-request-buffering: "off"
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    # Backend spricht HTTPS (nginx im Frontend-Container)
+    nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
+    # TLS-Zertifikat automatisch via cert-manager (optional)
+    # cert-manager.io/cluster-issuer: "letsencrypt-prod"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - securetransfer.example.com   # <-- Hostname anpassen
+      secretName: securetransfer-tls   # Zertifikat (cert-manager oder manuell)
+  rules:
+    - host: securetransfer.example.com  # <-- Hostname anpassen
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: frontend
+                port:
+                  number: 443

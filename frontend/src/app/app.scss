@@ -1,0 +1,34 @@
+.app-toolbar {
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  gap: 4px;
+}
+
+.toolbar-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 1.1rem;
+  font-weight: 600;
+  cursor: pointer;
+  letter-spacing: 0.3px;
+
+  mat-icon {
+    color: #818cf8;
+  }
+}
+
+.spacer {
+  flex: 1;
+}
+
+button.active-nav {
+  color: #818cf8 !important;
+}
+
+main {
+  min-height: calc(100vh - 64px);
+}

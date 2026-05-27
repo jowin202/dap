@@ -1,0 +1,49 @@
+Add-Type -TypeDefinition @"
+using System.Security.Cryptography;
+public class AesGcm256 {
+    public static byte[] Decrypt(byte[] key, byte[] iv, byte[] tag, byte[] cipher) {
+        using (var gcm = new AesGcm(key, 16)) {
+            var plain = new byte[cipher.Length];
+            gcm.Decrypt(iv, cipher, tag, plain);
+            return plain;
+        }
+    }
+}
+"@ -Language CSharp
+
+$url  = "{{ download_url }}"
+$pass = Read-Host -AsSecureString "Kennwort"
+$dest = Read-Host "Speicherpfad"
+
+$bstr  = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($pass)
+$plain = [Runtime.InteropServices.Marshal]::PtrToStringAuto($bstr)
+[Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr)
+
+$req      = [Net.HttpWebRequest]::Create($url)
+$resp     = $req.GetResponse()
+$inStream = $resp.GetResponseStream()
+
+$salt = [byte[]]::new(16)
+$inStream.Read($salt, 0, 16) | Out-Null
+
+$kdf = [Security.Cryptography.Rfc2898DeriveBytes]::new($plain, $salt, 100000, "SHA256")
+$key = $kdf.GetBytes(32)
+$plain = $null
+
+$out    = [IO.File]::OpenWrite($dest)
+$lenBuf = [byte[]]::new(4)
+
+while ($inStream.Read($lenBuf, 0, 4) -eq 4) {
+    $blockLen = [Net.IPAddress]::NetworkToHostOrder([BitConverter]::ToInt32($lenBuf, 0))
+    $iv       = [byte[]]::new(12)
+    $tag      = [byte[]]::new(16)
+    $cipher   = [byte[]]::new($blockLen)
+    $inStream.Read($iv,     0, 12)        | Out-Null
+    $inStream.Read($tag,    0, 16)        | Out-Null
+    $inStream.Read($cipher, 0, $blockLen) | Out-Null
+    $decrypted = [AesGcm256]::Decrypt($key, $iv, $tag, $cipher)
+    $out.Write($decrypted, 0, $decrypted.Length)
+}
+
+$out.Close(); $inStream.Close(); $resp.Close()
+Write-Host "Fertig: $dest" -ForegroundColor Green

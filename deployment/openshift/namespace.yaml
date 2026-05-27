@@ -1,0 +1,8 @@
+# In OpenShift ist ein Namespace gleichzeitig ein "Project".
+# Alternativ: oc new-project securetransfer
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: securetransfer
+  labels:
+    app.kubernetes.io/name: securetransfer

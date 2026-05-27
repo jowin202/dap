@@ -1,0 +1,125 @@
+<div class="page-container">
+  <mat-card class="upload-card">
+    <mat-card-header>
+      <mat-card-title>
+        <mat-icon>upload_file</mat-icon>
+        Datei verschlüsselt hochladen
+      </mat-card-title>
+    </mat-card-header>
+
+    <mat-card-content>
+      @if (!result) {
+        <!-- Drop zone -->
+        <div class="drop-zone" [class.drag-over]="dragOver"
+             (dragover)="onDragOver($event)" (dragleave)="onDragLeave()" (drop)="onDrop($event)">
+          @if (selectedFile) {
+            <div class="file-info">
+              <mat-icon class="file-icon">insert_drive_file</mat-icon>
+              <span class="file-name">{{ selectedFile.name }}</span>
+              <span class="file-size">{{ formatBytes(selectedFile.size) }}</span>
+            </div>
+          } @else {
+            <div class="drop-hint">
+              <mat-icon class="drop-icon">cloud_upload</mat-icon>
+              <p>Datei hier hinziehen</p>
+              <p class="or-text">oder</p>
+            </div>
+          }
+          <label class="file-select-btn">
+            <input type="file" hidden (change)="onFileSelect($event)" />
+            <button mat-stroked-button type="button" onclick="this.parentElement.querySelector('input').click()">
+              Datei auswählen
+            </button>
+          </label>
+        </div>
+
+        <!-- Password -->
+        <mat-form-field appearance="outline" class="full-width">
+          <mat-label>Verschlüsselungspasswort</mat-label>
+          <input matInput [(ngModel)]="password" type="password" autocomplete="new-password" />
+          <mat-icon matPrefix>lock</mat-icon>
+        </mat-form-field>
+
+        <!-- Expiry -->
+        <div class="expiry-row">
+          <span class="expiry-label">Ablauf</span>
+          <mat-button-toggle-group [(ngModel)]="expiresIn" name="expiresIn">
+            <mat-button-toggle value="24h">24 Stunden</mat-button-toggle>
+            <mat-button-toggle value="7d">7 Tage</mat-button-toggle>
+            <mat-button-toggle value="30d">30 Tage</mat-button-toggle>
+            <mat-button-toggle value="never">Unbegrenzt</mat-button-toggle>
+          </mat-button-toggle-group>
+        </div>
+
+        <!-- Progress -->
+        @if (uploading) {
+          <div class="progress-section">
+            <span class="progress-label">Verschlüsseln & Hochladen … {{ uploadPct }}%</span>
+            <mat-progress-bar mode="determinate" [value]="uploadPct" />
+          </div>
+        }
+
+        <!-- Action -->
+        <button mat-flat-button color="primary" class="full-width upload-btn"
+                [disabled]="!selectedFile || !password || uploading"
+                (click)="startUpload()">
+          <mat-icon>lock</mat-icon>
+          {{ uploading ? 'Lädt hoch…' : 'Verschlüsseln & hochladen' }}
+        </button>
+      } @else {
+        <!-- Result -->
+        <div class="result-section">
+          <div class="result-header">
+            <mat-icon class="success-icon">check_circle</mat-icon>
+            <span>Upload erfolgreich!</span>
+          </div>
+
+          @if (result.expires_at) {
+            <p class="expires-info">
+              Läuft ab: {{ result.expires_at | date:'dd.MM.yyyy HH:mm' }} Uhr
+            </p>
+          } @else {
+            <p class="expires-info">Läuft nie ab</p>
+          }
+
+          <mat-divider />
+
+          <div class="cmd-row">
+            <span class="cmd-label">Download-URL</span>
+            <div class="cmd-box">
+              <code>{{ result.download_url }}</code>
+              <button mat-icon-button (click)="copyToClipboard(result!.download_url, 'URL')">
+                <mat-icon>content_copy</mat-icon>
+              </button>
+            </div>
+          </div>
+
+          <div class="cmd-row">
+            <span class="cmd-label">PowerShell (Windows 11)</span>
+            <div class="cmd-box">
+              <code>{{ result.ps_cmd }}</code>
+              <button mat-icon-button (click)="copyToClipboard(result!.ps_cmd, 'PowerShell-Befehl')">
+                <mat-icon>content_copy</mat-icon>
+              </button>
+            </div>
+          </div>
+
+          <div class="cmd-row">
+            <span class="cmd-label">Shell (Linux / macOS)</span>
+            <div class="cmd-box">
+              <code>{{ result.sh_cmd }}</code>
+              <button mat-icon-button (click)="copyToClipboard(result!.sh_cmd, 'Shell-Befehl')">
+                <mat-icon>content_copy</mat-icon>
+              </button>
+            </div>
+          </div>
+
+          <button mat-stroked-button (click)="reset()" class="new-upload-btn">
+            <mat-icon>add</mat-icon>
+            Neue Datei hochladen
+          </button>
+        </div>
+      }
+    </mat-card-content>
+  </mat-card>
+</div>

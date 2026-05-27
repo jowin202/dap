@@ -1,0 +1,16 @@
+# Bindet die "anyuid" SCC an den app-sa ServiceAccount.
+# Ermöglicht postgres:17-alpine (UID 70) und nginx:alpine (root) zu laufen.
+# Äquivalent zu: oc adm policy add-scc-to-user anyuid -z app-sa -n securetransfer
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: app-sa-anyuid
+  namespace: securetransfer
+subjects:
+  - kind: ServiceAccount
+    name: app-sa
+    namespace: securetransfer
+roleRef:
+  kind: ClusterRole
+  name: system:openshift:scc:anyuid
+  apiGroup: rbac.authorization.k8s.io

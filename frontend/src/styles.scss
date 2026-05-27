@@ -1,0 +1,69 @@
+@use '@angular/material' as mat;
+
+// Dark M3 theme
+html {
+  @include mat.theme((
+    color: (
+      primary: mat.$violet-palette,
+      tertiary: mat.$cyan-palette,
+      theme-type: dark,
+    ),
+    typography: 'Inter',
+    density: 0,
+  ));
+}
+
+:root {
+  --surface:   #12131a;
+  --surface-2: #1c1d26;
+  --border:    rgba(255, 255, 255, 0.08);
+  --radius:    12px;
+}
+
+html, body {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: #0d0e14;
+  color: rgba(255, 255, 255, 0.87);
+  font-family: 'Inter', sans-serif;
+  color-scheme: dark;
+}
+
+// Make mat-card use our surface colour
+.mat-mdc-card {
+  background-color: var(--surface-2) !important;
+}
+
+// Snackbar dark
+.mat-mdc-snack-bar-container {
+  background: #2a2b38 !important;
+}
+
+// Progress bar track
+.mat-mdc-progress-bar {
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+// Button toggle group
+.mat-button-toggle-group {
+  border-color: var(--border) !important;
+}
+
+.mat-button-toggle {
+  background: var(--surface) !important;
+  color: rgba(255,255,255,0.7) !important;
+}
+
+.mat-button-toggle-checked {
+  background: rgba(139, 92, 246, 0.18) !important;
+  color: #a78bfa !important;
+}
+
+// Remove subscript space below form fields
+.mat-mdc-form-field-subscript-wrapper {
+  display: none;
+}

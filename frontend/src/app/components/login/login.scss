@@ -1,0 +1,56 @@
+.login-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  padding: 16px;
+}
+
+.login-card {
+  width: 100%;
+  max-width: 400px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.logo-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0 16px;
+  width: 100%;
+  justify-content: center;
+}
+
+.logo-icon {
+  font-size: 36px;
+  width: 36px;
+  height: 36px;
+  color: #818cf8;
+}
+
+.app-title {
+  font-size: 1.5rem;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+}
+
+.full-width {
+  width: 100%;
+}
+
+.remember-me {
+  display: block;
+  margin-bottom: 16px;
+}
+
+.login-btn {
+  height: 48px;
+  font-size: 1rem;
+  margin-top: 8px;
+
+  mat-spinner {
+    display: inline-block;
+  }
+}

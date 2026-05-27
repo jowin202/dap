@@ -1,0 +1,48 @@
+#!/bin/sh
+python3 - "{{ download_url }}" <<'PYEOF'
+import sys, struct, ssl, getpass, urllib.request
+from urllib.parse import urlparse
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from cryptography.hazmat.backends import default_backend
+
+url = sys.argv[1]
+
+# stdin ist die Pipe – Eingaben explizit vom Terminal lesen
+tty = open('/dev/tty')
+pw  = getpass.getpass("Kennwort: ").encode()
+sys.stderr.write("Speicherpfad: ")
+sys.stderr.flush()
+dest = tty.readline().rstrip('\n')
+tty.close()
+
+# Selbstsignierte Zertifikate für localhost akzeptieren
+_host = urlparse(url).hostname
+if _host in ('localhost', '127.0.0.1', '::1'):
+    _ctx = ssl.create_default_context()
+    _ctx.check_hostname = False
+    _ctx.verify_mode = ssl.CERT_NONE
+    resp = urllib.request.urlopen(url, context=_ctx)
+else:
+    resp = urllib.request.urlopen(url)
+
+salt = resp.read(16)
+
+kdf = PBKDF2HMAC(algorithm=hashes.SHA256(), length=32, salt=salt,
+                 iterations=100000, backend=default_backend())
+key = kdf.derive(pw)
+gcm = AESGCM(key)
+
+with open(dest, 'wb') as f:
+    while True:
+        hdr = resp.read(4)
+        if len(hdr) < 4: break
+        block_len = struct.unpack('>I', hdr)[0]
+        iv        = resp.read(12)
+        tag       = resp.read(16)
+        cipher    = resp.read(block_len)
+        f.write(gcm.decrypt(iv, cipher + tag, None))
+
+print(f"Fertig: {dest}")
+PYEOF

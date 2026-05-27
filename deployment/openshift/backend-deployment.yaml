@@ -1,0 +1,85 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: securetransfer
+  labels:
+    app: backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+    spec:
+      serviceAccountName: app-sa
+      initContainers:
+        # Führt Datenbankmigrationen vor dem Start des Hauptcontainers durch
+        - name: alembic-migrate
+          image: ghcr.io/YOUR_ORG/securetransfer-backend:latest
+          command: ["alembic", "upgrade", "head"]
+          env:
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: securetransfer-secrets
+                  key: POSTGRES_PASSWORD
+            - name: DATABASE_URL
+              value: "postgresql+asyncpg://dap:$(POSTGRES_PASSWORD)@postgres/dap"
+      containers:
+        - name: backend
+          image: ghcr.io/YOUR_ORG/securetransfer-backend:latest
+          env:
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: securetransfer-secrets
+                  key: POSTGRES_PASSWORD
+            - name: DATABASE_URL
+              value: "postgresql+asyncpg://dap:$(POSTGRES_PASSWORD)@postgres/dap"
+            - name: ADMIN_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: securetransfer-secrets
+                  key: ADMIN_TOKEN
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: securetransfer-secrets
+                  key: JWT_SECRET
+            - name: JWT_EXPIRE_HOURS
+              value: "8"
+            - name: REFRESH_EXPIRE_DAYS
+              value: "30"
+            - name: FILES_DIR
+              value: /data/files
+          ports:
+            - containerPort: 8000
+          volumeMounts:
+            - name: file-storage
+              mountPath: /data/files
+          livenessProbe:
+            tcpSocket:
+              port: 8000
+            initialDelaySeconds: 20
+            periodSeconds: 15
+            failureThreshold: 3
+          readinessProbe:
+            tcpSocket:
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: 200m
+              memory: 256Mi
+            limits:
+              cpu: 1000m
+              memory: 1Gi
+      volumes:
+        - name: file-storage
+          persistentVolumeClaim:
+            claimName: file-storage

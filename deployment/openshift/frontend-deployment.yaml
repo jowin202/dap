@@ -1,0 +1,44 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+  namespace: securetransfer
+  labels:
+    app: frontend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: frontend
+  template:
+    metadata:
+      labels:
+        app: frontend
+    spec:
+      # app-sa hat anyuid SCC → nginx:alpine kann als root laufen
+      serviceAccountName: app-sa
+      containers:
+        - name: frontend
+          image: ghcr.io/YOUR_ORG/securetransfer-frontend:latest
+          ports:
+            - name: https
+              containerPort: 443
+            - name: http
+              containerPort: 80
+          livenessProbe:
+            tcpSocket:
+              port: 443
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          readinessProbe:
+            tcpSocket:
+              port: 443
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi

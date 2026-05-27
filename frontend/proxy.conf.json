@@ -1,0 +1,8 @@
+{
+  "/upload": { "target": "http://localhost:8000", "secure": false, "changeOrigin": true },
+  "/download": { "target": "http://localhost:8000", "secure": false, "changeOrigin": true },
+  "/psdec": { "target": "http://localhost:8000", "secure": false, "changeOrigin": true },
+  "/shdec": { "target": "http://localhost:8000", "secure": false, "changeOrigin": true },
+  "/auth": { "target": "http://localhost:8000", "secure": false, "changeOrigin": true },
+  "/api": { "target": "http://localhost:8000", "secure": false, "changeOrigin": true }
+}
