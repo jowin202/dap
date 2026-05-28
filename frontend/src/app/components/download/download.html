@@ -14,6 +14,14 @@
           <span>{{ infoError }}</span>
         </div>
       } @else {
+
+        @if (!fsapiSupported) {
+          <div class="warn-box">
+            <mat-icon>warning_amber</mat-icon>
+            <span>Dein Browser unterstützt keinen direkten Download. Bitte nutze PowerShell oder Shell (siehe unten).</span>
+          </div>
+        }
+
         <mat-form-field appearance="outline" class="full-width">
           <mat-label>Download-Token</mat-label>
           <input matInput [(ngModel)]="token" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
@@ -73,6 +81,35 @@
           <mat-icon>download</mat-icon>
           {{ loading ? 'Lädt herunter…' : 'Herunterladen & Entschlüsseln' }}
         </button>
+
+        @if (fileInfo?.ps_cmd) {
+          <mat-divider class="alt-divider" />
+
+          <div class="alt-header" [class.alt-header--highlighted]="!fsapiSupported">
+            <mat-icon>terminal</mat-icon>
+            <span>{{ fsapiSupported ? 'Alternativen' : 'Empfohlene Alternativen' }}</span>
+          </div>
+
+          <div class="cmd-row">
+            <span class="cmd-label">PowerShell (Windows 11)</span>
+            <div class="cmd-box" [class.cmd-box--highlighted]="!fsapiSupported">
+              <code>{{ fileInfo!.ps_cmd }}</code>
+              <button mat-icon-button (click)="copyToClipboard(fileInfo!.ps_cmd, 'PowerShell-Befehl')">
+                <mat-icon>content_copy</mat-icon>
+              </button>
+            </div>
+          </div>
+
+          <div class="cmd-row">
+            <span class="cmd-label">Shell (Linux / macOS)</span>
+            <div class="cmd-box" [class.cmd-box--highlighted]="!fsapiSupported">
+              <code>{{ fileInfo!.sh_cmd }}</code>
+              <button mat-icon-button (click)="copyToClipboard(fileInfo!.sh_cmd, 'Shell-Befehl')">
+                <mat-icon>content_copy</mat-icon>
+              </button>
+            </div>
+          </div>
+        }
       }
     </mat-card-content>
   </mat-card>

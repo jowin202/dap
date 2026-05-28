@@ -1,4 +1,5 @@
 import os
+from urllib.parse import quote
 from fastapi import APIRouter, Request, HTTPException, Depends
 from fastapi.responses import StreamingResponse, PlainTextResponse
 from jinja2 import Environment, FileSystemLoader
@@ -52,18 +53,25 @@ async def download_file(token: str, db: AsyncSession = Depends(get_db)):
         media_type="application/octet-stream",
         headers={
             "Content-Length": str(upload.size_bytes),
-            "Content-Disposition": f'attachment; filename="{upload.filename}"',
+            "Content-Disposition": f"attachment; filename*=UTF-8''{quote(upload.filename)}",
         },
     )
 
 
 @router.get("/api/info/{token}")
-async def file_info(token: str, db: AsyncSession = Depends(get_db)):
+async def file_info(token: str, request: Request, db: AsyncSession = Depends(get_db)):
     upload = await get_valid_upload(token, db)
+    base      = base_url(request)
+    host      = request.headers.get("x-forwarded-host", request.headers.get("host", "")).split(":")[0]
+    is_local  = host in ("localhost", "127.0.0.1", "::1")
+    curl_flags = "-sfkL" if is_local else "-sfL"
+    irm_flags  = " -SkipCertificateCheck" if is_local else ""
     return {
         "filename":   upload.filename,
         "size_bytes": upload.size_bytes,
         "expires_at": upload.expires_at.isoformat() if upload.expires_at else None,
+        "ps_cmd":     f'powershell -Command "irm{irm_flags} {base}/psdec/{upload.token}/ | iex"',
+        "sh_cmd":     f"curl {curl_flags} {base}/shdec/{upload.token}/ | sh",
     }
 
 

@@ -10,6 +10,7 @@ import { MatInputModule } from '@angular/material/input';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatIconModule } from '@angular/material/icon';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
+import { MatDividerModule } from '@angular/material/divider';
 
 import { TransferService } from '../../services/transfer.service';
 
@@ -17,6 +18,8 @@ interface FileInfo {
   filename: string;
   size_bytes: number;
   expires_at: string | null;
+  ps_cmd: string;
+  sh_cmd: string;
 }
 
 @Component({
@@ -32,6 +35,7 @@ interface FileInfo {
     MatProgressBarModule,
     MatIconModule,
     MatSnackBarModule,
+    MatDividerModule,
   ],
   templateUrl: './download.html',
   styleUrl: './download.scss',
@@ -45,6 +49,10 @@ export class DownloadComponent implements OnInit {
   done      = false;
   fileInfo: FileInfo | null = null;
   infoError = '';
+
+  get fsapiSupported(): boolean {
+    return 'showSaveFilePicker' in window;
+  }
 
   constructor(
     private route: ActivatedRoute,
@@ -82,10 +90,15 @@ export class DownloadComponent implements OnInit {
     return `${(n / 1024 ** 3).toFixed(2)} GB`;
   }
 
+  async copyToClipboard(text: string, label: string) {
+    await navigator.clipboard.writeText(text);
+    this.snack.open(`${label} kopiert`, undefined, { duration: 2000 });
+  }
+
   async startDownload() {
     if (!this.token || !this.password) return;
-    if (!('showSaveFilePicker' in window)) {
-      this.snack.open('Dieser Browser wird nicht unterstützt. Bitte Chromium-Browser verwenden.', 'OK', { duration: 6000 });
+    if (!this.fsapiSupported) {
+      this.snack.open('Dieser Browser wird nicht unterstützt. Bitte Chromium-Browser oder Alternative verwenden.', 'OK', { duration: 6000 });
       return;
     }
 
