@@ -4,20 +4,23 @@ import { AuthService } from './auth.service';
 
 const CHUNK_SIZE = 8 * 1024 * 1024; // 8 MB plaintext per block
 
-async function readExactly(reader: ReadableStreamDefaultReader<Uint8Array>, n: number): Promise<Uint8Array | null> {
-  const buf = new Uint8Array(n);
-  let offset = 0;
-  while (offset < n) {
-    const { done, value } = await reader.read();
-    if (done) return offset === 0 ? null : buf.slice(0, offset);
-    const slice = value.slice(0, n - offset);
-    buf.set(slice, offset);
-    offset += slice.byteLength;
-    if (value.byteLength > slice.byteLength) {
-      // leftover – put back is not possible; this simple impl assumes exact chunk boundaries
+class StreamReader {
+  private buf = new Uint8Array(0);
+  constructor(private reader: ReadableStreamDefaultReader<Uint8Array>) {}
+
+  async readExactly(n: number): Promise<Uint8Array | null> {
+    while (this.buf.byteLength < n) {
+      const { done, value } = await this.reader.read();
+      if (done) return null;
+      const merged = new Uint8Array(this.buf.byteLength + value.byteLength);
+      merged.set(this.buf);
+      merged.set(value, this.buf.byteLength);
+      this.buf = merged;
     }
+    const result = this.buf.slice(0, n);
+    this.buf = this.buf.slice(n);
+    return result;
   }
-  return buf;
 }
 
 export interface UploadResult {
@@ -116,21 +119,20 @@ export class TransferService {
 
     const total   = parseInt(response.headers.get('content-length') ?? '0', 10);
     let received  = 0;
-    const reader  = response.body!.getReader();
+    const sr      = new StreamReader(response.body!.getReader());
 
-    // Read salt (first 16 bytes)
-    const saltBytes = await readExactly(reader, 16);
+    const saltBytes = await sr.readExactly(16);
     if (!saltBytes) throw new Error('Ungültige Datei – Salt fehlt');
     received += 16;
     const key = await this.crypto.deriveKey(password, saltBytes);
 
     while (true) {
-      const lenBytes = await readExactly(reader, 4);
+      const lenBytes = await sr.readExactly(4);
       if (!lenBytes) break;
       const blockLen = new DataView(lenBytes.buffer).getUint32(0, false);
-      const iv       = await readExactly(reader, 12);
-      const tag      = await readExactly(reader, 16);
-      const cipher   = await readExactly(reader, blockLen);
+      const iv       = await sr.readExactly(12);
+      const tag      = await sr.readExactly(16);
+      const cipher   = await sr.readExactly(blockLen);
       if (!iv || !tag || !cipher) throw new Error('Unvollständiger Block');
 
       const plaintext = await this.crypto.decryptChunk(key, iv, tag, cipher);

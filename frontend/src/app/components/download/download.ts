@@ -103,7 +103,7 @@ export class DownloadComponent implements OnInit {
       );
       this.done = true;
     } catch (e: any) {
-      const msg = e.message ?? 'Download fehlgeschlagen';
+      const msg = e.message || 'Download fehlgeschlagen';
       this.snack.open(msg.includes('operation-specific') ? 'Falsches Passwort oder beschädigte Datei.' : msg,
                       'OK', { duration: 6000 });
     } finally {
