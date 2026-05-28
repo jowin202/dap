@@ -21,7 +21,7 @@ EXPIRY_MAP = {
 FILES_DIR = os.environ.get("FILES_DIR", "/data/files")
 
 
-@router.post("/upload")
+@router.post("/api/upload")
 async def upload_file(
     request: Request,
     db=Depends(get_db),

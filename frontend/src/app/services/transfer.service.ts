@@ -81,7 +81,7 @@ export class TransferService {
       .pipeThrough(countingTransform);
 
     const token = this.auth.getToken();
-    const response = await fetch('/upload', {
+    const response = await fetch('/api/upload', {
       method: 'POST',
       // @ts-ignore – duplex needed for streaming body in Chromium
       duplex: 'half',
@@ -111,38 +111,40 @@ export class TransferService {
     const handle   = await (window as any).showSaveFilePicker({ suggestedName: filename });
     const writable = await handle.createWritable();
 
-    const response = await fetch(`/download/${token}`);
-    if (!response.ok) {
+    try {
+      const response = await fetch(`/download/${token}`);
+      if (!response.ok) throw new Error(`Download fehlgeschlagen (${response.status})`);
+
+      const total   = parseInt(response.headers.get('content-length') ?? '0', 10);
+      let received  = 0;
+      const sr      = new StreamReader(response.body!.getReader());
+
+      const saltBytes = await sr.readExactly(16);
+      if (!saltBytes) throw new Error('Ungültige Datei – Salt fehlt');
+      received += 16;
+      const key = await this.crypto.deriveKey(password, saltBytes);
+
+      while (true) {
+        const lenBytes = await sr.readExactly(4);
+        if (!lenBytes) break;
+        const blockLen = new DataView(lenBytes.buffer).getUint32(0, false);
+        const iv       = await sr.readExactly(12);
+        const tag      = await sr.readExactly(16);
+        const cipher   = await sr.readExactly(blockLen);
+        if (!iv || !tag || !cipher) throw new Error('Unvollständiger Block');
+
+        const plaintext = await this.crypto.decryptChunk(key, iv, tag, cipher);
+        await writable.write(plaintext);
+
+        received += 4 + 12 + 16 + blockLen;
+        if (total > 0) onProgress(Math.min(99, Math.round((received / total) * 100)));
+      }
+
       await writable.close();
-      throw new Error(`Download fehlgeschlagen (${response.status})`);
+      onProgress(100);
+    } catch (e) {
+      await writable.abort();
+      throw e;
     }
-
-    const total   = parseInt(response.headers.get('content-length') ?? '0', 10);
-    let received  = 0;
-    const sr      = new StreamReader(response.body!.getReader());
-
-    const saltBytes = await sr.readExactly(16);
-    if (!saltBytes) throw new Error('Ungültige Datei – Salt fehlt');
-    received += 16;
-    const key = await this.crypto.deriveKey(password, saltBytes);
-
-    while (true) {
-      const lenBytes = await sr.readExactly(4);
-      if (!lenBytes) break;
-      const blockLen = new DataView(lenBytes.buffer).getUint32(0, false);
-      const iv       = await sr.readExactly(12);
-      const tag      = await sr.readExactly(16);
-      const cipher   = await sr.readExactly(blockLen);
-      if (!iv || !tag || !cipher) throw new Error('Unvollständiger Block');
-
-      const plaintext = await this.crypto.decryptChunk(key, iv, tag, cipher);
-      await writable.write(plaintext);
-
-      received += 4 + 12 + 16 + blockLen;
-      if (total > 0) onProgress(Math.min(99, Math.round((received / total) * 100)));
-    }
-
-    await writable.close();
-    onProgress(100);
   }
 }
