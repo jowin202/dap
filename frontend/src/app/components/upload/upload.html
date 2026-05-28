@@ -85,6 +85,16 @@
           <mat-divider />
 
           <div class="cmd-row">
+            <span class="cmd-label">Token</span>
+            <div class="cmd-box">
+              <code>{{ result.token }}</code>
+              <button mat-icon-button (click)="copyToClipboard(result!.token, 'Token')">
+                <mat-icon>content_copy</mat-icon>
+              </button>
+            </div>
+          </div>
+
+          <div class="cmd-row">
             <span class="cmd-label">Download-URL</span>
             <div class="cmd-box">
               <code>{{ result.download_url }}</code>

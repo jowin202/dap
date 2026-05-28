@@ -8,3 +8,4 @@ dist/
 .angular/
 *.egg-info/
 .vscode/
+volumes/

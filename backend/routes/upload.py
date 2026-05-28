@@ -1,6 +1,7 @@
 import uuid
 import os
 from datetime import datetime, timezone, timedelta
+from urllib.parse import unquote
 from fastapi import APIRouter, Request, Depends
 
 from utils.url import base_url
@@ -27,7 +28,7 @@ async def upload_file(
     user=Depends(require_user),
 ):
     token      = uuid.uuid4()
-    filename   = request.headers.get("x-filename", "file.bin")
+    filename   = unquote(request.headers.get("x-filename", "file.bin"))
     expires_in = request.headers.get("x-expires-in", "24h")
     delta      = EXPIRY_MAP.get(expires_in, timedelta(hours=24))
     expires_at = datetime.now(timezone.utc) + delta if delta is not None else None

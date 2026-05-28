@@ -84,7 +84,7 @@ export class TransferService {
       duplex: 'half',
       body,
       headers: {
-        'X-Filename':   file.name,
+        'X-Filename':   encodeURIComponent(file.name),
         'X-Expires-In': expiresIn,
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },

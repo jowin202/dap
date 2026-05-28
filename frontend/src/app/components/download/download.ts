@@ -57,6 +57,12 @@ export class DownloadComponent implements OnInit {
     if (this.token) this.loadInfo();
   }
 
+  onTokenInput(value: string) {
+    this.fileInfo  = null;
+    this.infoError = '';
+    if (value.length === 36) this.loadInfo();
+  }
+
   async loadInfo() {
     try {
       const res = await fetch(`/api/info/${this.token}`);

@@ -14,13 +14,12 @@
           <span>{{ infoError }}</span>
         </div>
       } @else {
-        @if (!token) {
-          <mat-form-field appearance="outline" class="full-width">
-            <mat-label>Download-Token</mat-label>
-            <input matInput [(ngModel)]="token" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" />
-            <mat-icon matPrefix>tag</mat-icon>
-          </mat-form-field>
-        }
+        <mat-form-field appearance="outline" class="full-width">
+          <mat-label>Download-Token</mat-label>
+          <input matInput [(ngModel)]="token" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                 (ngModelChange)="onTokenInput($event)" />
+          <mat-icon matPrefix>tag</mat-icon>
+        </mat-form-field>
 
         @if (fileInfo) {
           <div class="file-info-card">
