@@ -42,7 +42,7 @@ services:
     depends_on:
       - backend
     ports:
-      - "${PORT:-8443}:443"
+      - "${PORT:-8080}:80"
 
 volumes:
   postgres-data:
