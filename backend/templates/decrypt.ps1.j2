@@ -1,3 +1,10 @@
+if ($PSVersionTable.PSEdition -ne 'Core') {
+    Write-Host "Dieses Skript benoetigt PowerShell 7 (AES-GCM ist in Windows PowerShell 5.1 nicht verfuegbar)." -ForegroundColor Red
+    Write-Host "Installieren mit: winget install --id Microsoft.PowerShell -e" -ForegroundColor Yellow
+    Write-Host "Danach denselben Befehl mit 'pwsh' statt 'powershell' erneut ausfuehren." -ForegroundColor Yellow
+    exit 1
+}
+
 Add-Type -TypeDefinition @"
 using System.Security.Cryptography;
 public class AesGcm256 {
