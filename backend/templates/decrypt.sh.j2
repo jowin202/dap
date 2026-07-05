@@ -1,7 +1,7 @@
 #!/bin/sh
 python3 - "{{ download_url }}" <<'PYEOF'
-import sys, os, struct, ssl, getpass, urllib.request
-from urllib.parse import urlparse
+import sys, os, re, struct, getpass, urllib.request
+from urllib.parse import unquote
 from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.hazmat.primitives import hashes
@@ -10,15 +10,11 @@ from cryptography.hazmat.backends import default_backend
 
 url = sys.argv[1]
 
-# stdin ist die Pipe – Eingaben explizit vom Terminal lesen
-tty = open('/dev/tty')
-pw  = getpass.getpass("Kennwort: ").encode()
-sys.stderr.write("Speicherpfad: ")
-sys.stderr.flush()
-dest = tty.readline().rstrip('\n')
-tty.close()
+pw = getpass.getpass("Kennwort: ").encode()
 
 # Selbstsignierte Zertifikate für localhost akzeptieren
+# from urllib.parse import urlparse
+# import ssl
 # _host = urlparse(url).hostname
 # if _host in ('localhost', '127.0.0.1', '::1'):
 #     _ctx = ssl.create_default_context()
@@ -28,6 +24,12 @@ tty.close()
 # else:
 #     resp = urllib.request.urlopen(url)
 resp = urllib.request.urlopen(url)
+
+# Datei wird unter ihrem Originalnamen im aktuellen Verzeichnis gespeichert
+cd = resp.headers.get('Content-Disposition', '')
+m  = re.search(r"filename\*=UTF-8''([^;]+)", cd)
+filename = unquote(m.group(1)) if m else os.path.basename(url.rstrip('/'))
+dest = os.path.join(os.getcwd(), os.path.basename(filename))
 
 salt = resp.read(16)
 

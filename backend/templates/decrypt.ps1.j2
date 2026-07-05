@@ -20,7 +20,6 @@ public class AesGcm256 {
 
 $url  = "{{ download_url }}"
 $pass = Read-Host -AsSecureString "Kennwort"
-$dest = Read-Host "Speicherpfad"
 
 $bstr  = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($pass)
 $plain = [Runtime.InteropServices.Marshal]::PtrToStringAuto($bstr)
@@ -29,6 +28,15 @@ $plain = [Runtime.InteropServices.Marshal]::PtrToStringAuto($bstr)
 $req      = [Net.HttpWebRequest]::Create($url)
 $resp     = $req.GetResponse()
 $inStream = $resp.GetResponseStream()
+
+# Datei wird unter ihrem Originalnamen im aktuellen Verzeichnis gespeichert
+$cd = $resp.Headers["Content-Disposition"]
+if ($cd -match "filename\*=UTF-8''([^;]+)") {
+    $filename = [Uri]::UnescapeDataString($Matches[1])
+} else {
+    $filename = [IO.Path]::GetFileName($url.TrimEnd('/'))
+}
+$dest = Join-Path (Get-Location).Path (Split-Path -Leaf $filename)
 
 $salt = [byte[]]::new(16)
 $inStream.Read($salt, 0, 16) | Out-Null
