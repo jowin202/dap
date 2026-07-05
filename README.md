@@ -38,22 +38,35 @@ ADMIN_TOKEN=langer-zufaelliger-admin-token
 JWT_SECRET=langer-zufaelliger-jwt-secret
 JWT_EXPIRE_HOURS=8
 REFRESH_EXPIRE_DAYS=30
-PORT=443
+HTTP_PORT=80
+HTTPS_PORT=443
 ```
 
 ```bash
 # 3. Starten
 docker compose up --build
 
-# App ist erreichbar unter https://localhost
+# App ist erreichbar unter https://dap.jowin.at (oder https://localhost)
 ```
 
-> **Selbstsigniertes Zertifikat:** Der Browser zeigt beim ersten Aufruf eine Sicherheitswarnung.
-> Einmalig mit „Trotzdem fortfahren" / „Advanced → Proceed" bestätigen.
-> Der Upload-Streaming-Mechanismus (Chrome ReadableStream) setzt HTTP/2 voraus — HTTP/2 erfordert HTTPS.
-> In einem echten Deployment wird das selbstsignierte Zertifikat durch ein gültiges (z. B. Let's Encrypt) ersetzt.
+### Architektur
 
-Beim ersten Start führt der Backend-Container automatisch `alembic upgrade head` aus.
+Ein `app`-Container enthält Frontend und Backend in einem Image: das Angular-Frontend
+wird im Docker-Build kompiliert und landet als statischer Ordner (`backend/static`) im
+FastAPI-Backend-Container. FastAPI liefert alles unter `/api/*` selbst aus, alle anderen
+Pfade werden aus dem statischen Ordner bedient (SPA-Fallback auf `index.html`).
+
+Ein separater `proxy`-Container (nginx) terminiert TLS für die Domain `dap.jowin.at` und
+leitet alles an `app:8000` weiter. Der `app`-Container selbst ist nicht am Host exponiert.
+
+> **Zertifikat:** `nginx/certs/cert.pem` + `nginx/certs/key.pem` sind selbstsignierte
+> Platzhalter-Dateien. Der Browser zeigt deshalb beim ersten Aufruf eine
+> Sicherheitswarnung — einmalig mit „Trotzdem fortfahren" / „Advanced → Proceed" bestätigen.
+> Für ein echtes Deployment beide Dateien durch ein gültiges Zertifikat (z. B. Let's Encrypt)
+> für `dap.jowin.at` ersetzen (gleiche Dateinamen, dann reicht `docker compose restart proxy`).
+> Der Upload-Streaming-Mechanismus (Chrome ReadableStream) setzt HTTP/2 voraus — HTTP/2 erfordert HTTPS.
+
+Beim ersten Start führt der App-Container automatisch `alembic upgrade head` aus.
 
 ---
 
@@ -62,7 +75,7 @@ Beim ersten Start führt der Backend-Container automatisch `alembic upgrade head
 Upload ist nur für eingeloggte Nutzer möglich. User werden per API angelegt:
 
 ```bash
-curl -X POST http://localhost/auth/create_user \
+curl -k -X POST https://localhost/api/auth/create_user \
   -H "Authorization: Bearer <ADMIN_TOKEN>" \
   -H "Content-Type: application/json" \
   -d '{"username": "alice", "password": "sicher123"}'
@@ -139,7 +152,7 @@ docker run -d \
 
 ### Download (Browser)
 
-URL aufrufen: `http://<host>/download/<token>`
+URL aufrufen: `https://<host>/download/<token>`
 
 oder unter `/download` den Token manuell eingeben, Passwort eingeben und herunterladen.
 Die Entschlüsselung erfolgt komplett im Browser — die Datei wird direkt in den vom Nutzer
@@ -150,7 +163,7 @@ gewählten Speicherpfad geschrieben (via File System Access API).
 ### Download (Windows 11 — PowerShell)
 
 ```powershell
-powershell -Command "irm https://<host>/psdec/<token>/ | iex"
+powershell -Command "irm https://<host>/api/psdec/<token>/ | iex"
 ```
 
 Lädt ein fertig konfiguriertes PowerShell-Script herunter und führt es aus.
@@ -159,7 +172,7 @@ Kein NuGet, keine externen Abhängigkeiten — nur Inline-C# via `Add-Type`.
 ### Download (Linux / macOS — Shell)
 
 ```bash
-curl -sfL "https://<host>/shdec/<token>/" | sh
+curl -sfL "https://<host>/api/shdec/<token>/" | sh
 ```
 
 Erfordert Python 3 mit der `cryptography`-Library:
@@ -170,10 +183,23 @@ pip install cryptography
 
 ---
 
-## Deployment hinter Reverse Proxy (nginx / k8s)
+## Reverse Proxy / TLS
 
-Der Backend-Container spricht nur HTTP. TLS wird vom Reverse Proxy übernommen.
-Folgende Header müssen weitergeleitet werden:
+Der `proxy`-Service (`nginx/nginx.conf`) ist bereits fertig konfiguriert und übernimmt
+TLS-Terminierung für `dap.jowin.at`, HTTP→HTTPS-Redirect sowie die für große Uploads
+nötigen Timeouts/Buffering-Einstellungen. Der `app`-Container selbst spricht nur HTTP
+und ist nicht am Host exponiert.
+
+**Echtes Zertifikat einspielen:**
+
+```bash
+cp /pfad/zu/deinem/fullchain.pem nginx/certs/cert.pem
+cp /pfad/zu/deinem/privkey.pem   nginx/certs/key.pem
+docker compose restart proxy
+```
+
+Wird stattdessen ein *externer* Reverse Proxy (anderer nginx, k8s Ingress, Traefik, …)
+vor den `app`-Container gestellt, müssen folgende Header weitergeleitet werden:
 
 ```nginx
 proxy_set_header Host              $host;
@@ -198,12 +224,13 @@ proxy_read_timeout      3600s;
 | Variable | Beschreibung | Default |
 |---|---|---|
 | `DATABASE_URL` | PostgreSQL Connection String | — (Pflicht) |
-| `ADMIN_TOKEN` | Token für `POST /auth/create_user` | — (Pflicht) |
+| `ADMIN_TOKEN` | Token für `POST /api/auth/create_user` | — (Pflicht) |
 | `JWT_SECRET` | Signing-Secret für JWTs | — (Pflicht) |
 | `JWT_EXPIRE_HOURS` | Gültigkeit des Access Tokens | `8` |
 | `REFRESH_EXPIRE_DAYS` | Gültigkeit des Refresh-Token Cookies | `30` |
 | `FILES_DIR` | Verzeichnis für verschlüsselte Uploads | `/data/files` |
-| `PORT` | Exposed Port des Frontend-Containers | `80` |
+| `HTTP_PORT` | (nur Docker Compose) Host-Port für HTTP→HTTPS-Redirect | `80` |
+| `HTTPS_PORT` | (nur Docker Compose) Host-Port für HTTPS | `443` |
 | `POSTGRES_PASSWORD` | (nur Docker Compose) Datenbankpasswort | — (Pflicht) |
 
 ---
@@ -223,12 +250,16 @@ Zwei persistente Volumes — beide müssen gesichert werden:
 
 | Method | Pfad | Auth | Beschreibung |
 |---|---|---|---|
-| `POST` | `/auth/create_user` | Admin-Token | Nutzer anlegen |
-| `POST` | `/auth/login` | — | Login, gibt JWT zurück |
-| `POST` | `/auth/refresh` | Cookie | Neuen Access Token holen |
-| `POST` | `/auth/logout` | Cookie | Refresh-Token invalidieren |
-| `POST` | `/upload` | JWT | Datei verschlüsselt hochladen |
-| `GET` | `/download/{token}` | — | Datei herunterladen |
+| `POST` | `/api/auth/create_user` | Admin-Token | Nutzer anlegen |
+| `POST` | `/api/auth/login` | — | Login, gibt JWT zurück |
+| `POST` | `/api/auth/refresh` | Cookie | Neuen Access Token holen |
+| `POST` | `/api/auth/logout` | Cookie | Refresh-Token invalidieren |
+| `POST` | `/api/upload` | JWT | Datei verschlüsselt hochladen |
+| `GET` | `/api/download/{token}` | — | Datei herunterladen (Rohdaten) |
 | `GET` | `/api/info/{token}` | — | Dateiinfos (Name, Größe, Ablauf) |
-| `GET` | `/psdec/{token}/` | — | PowerShell-Decode-Script |
-| `GET` | `/shdec/{token}/` | — | Shell-Decode-Script |
+| `GET` | `/api/psdec/{token}/` | — | PowerShell-Decode-Script |
+| `GET` | `/api/shdec/{token}/` | — | Shell-Decode-Script |
+| `GET` | `/download/{token}` | — | Angular SPA-Route (Download-Seite im Browser) |
+
+Alles außer `/api/*` wird vom `app`-Container aus dem kompilierten Angular-Build
+(`backend/static`) ausgeliefert (SPA-Fallback auf `index.html`).

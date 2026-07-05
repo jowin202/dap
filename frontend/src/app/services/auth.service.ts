@@ -5,7 +5,7 @@ export class AuthService {
   private accessToken: string | null = null;
 
   async login(username: string, password: string, rememberMe: boolean): Promise<void> {
-    const res = await fetch('/auth/login', {
+    const res = await fetch('/api/auth/login', {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
@@ -21,7 +21,7 @@ export class AuthService {
 
   async tryAutoLogin(): Promise<boolean> {
     try {
-      const res = await fetch('/auth/refresh', { method: 'POST', credentials: 'include' });
+      const res = await fetch('/api/auth/refresh', { method: 'POST', credentials: 'include' });
       if (!res.ok) return false;
       const data = await res.json();
       this.accessToken = data.access_token;
@@ -32,7 +32,7 @@ export class AuthService {
   }
 
   async logout(): Promise<void> {
-    await fetch('/auth/logout', { method: 'POST', credentials: 'include' });
+    await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
     this.accessToken = null;
   }
 

@@ -12,7 +12,7 @@ from models.user import User
 from models.refresh_token import RefreshToken
 from utils.db import get_db
 
-router = APIRouter(prefix="/auth")
+router = APIRouter(prefix="/api/auth")
 bearer = HTTPBearer()
 
 ADMIN_TOKEN        = os.environ["ADMIN_TOKEN"]

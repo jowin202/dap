@@ -9,3 +9,5 @@ dist/
 *.egg-info/
 .vscode/
 volumes/
+nginx/certs/cert.pem
+nginx/certs/key.pem

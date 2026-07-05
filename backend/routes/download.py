@@ -35,7 +35,7 @@ async def get_valid_upload(token: str, db: AsyncSession) -> Upload:
     return upload
 
 
-@router.get("/download/{token}")
+@router.get("/api/download/{token}")
 async def download_file(token: str, db: AsyncSession = Depends(get_db)):
     upload = await get_valid_upload(token, db)
     path   = f"{FILES_DIR}/{upload.token}.enc"
@@ -70,22 +70,22 @@ async def file_info(token: str, request: Request, db: AsyncSession = Depends(get
         "filename":   upload.filename,
         "size_bytes": upload.size_bytes,
         "expires_at": upload.expires_at.isoformat() if upload.expires_at else None,
-        "ps_cmd":     f'powershell -Command "irm{irm_flags} {base}/psdec/{upload.token}/ | iex"',
-        "sh_cmd":     f"curl {curl_flags} {base}/shdec/{upload.token}/ | sh",
+        "ps_cmd":     f'powershell -Command "irm{irm_flags} {base}/api/psdec/{upload.token}/ | iex"',
+        "sh_cmd":     f"curl {curl_flags} {base}/api/shdec/{upload.token}/ | sh",
     }
 
 
-@router.get("/psdec/{token}/")
+@router.get("/api/psdec/{token}/")
 async def powershell_script(token: str, request: Request, db: AsyncSession = Depends(get_db)):
     await get_valid_upload(token, db)
-    url  = f"{base_url(request)}/download/{token}"
+    url  = f"{base_url(request)}/api/download/{token}"
     tmpl = jinja.get_template("decrypt.ps1.j2")
     return PlainTextResponse(tmpl.render(download_url=url), media_type="text/plain")
 
 
-@router.get("/shdec/{token}/")
+@router.get("/api/shdec/{token}/")
 async def shell_script(token: str, request: Request, db: AsyncSession = Depends(get_db)):
     await get_valid_upload(token, db)
-    url  = f"{base_url(request)}/download/{token}"
+    url  = f"{base_url(request)}/api/download/{token}"
     tmpl = jinja.get_template("decrypt.sh.j2")
     return PlainTextResponse(tmpl.render(download_url=url), media_type="text/plain")

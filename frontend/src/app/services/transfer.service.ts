@@ -112,7 +112,7 @@ export class TransferService {
     const writable = await handle.createWritable();
 
     try {
-      const response = await fetch(`/download/${token}`);
+      const response = await fetch(`/api/download/${token}`);
       if (!response.ok) throw new Error(`Download fehlgeschlagen (${response.status})`);
 
       const total   = parseInt(response.headers.get('content-length') ?? '0', 10);

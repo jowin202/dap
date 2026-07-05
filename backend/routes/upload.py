@@ -59,6 +59,6 @@ async def upload_file(
         "token":        str(token),
         "expires_at":   expires_at.isoformat() if expires_at else None,
         "download_url": f"{base}/download/{token}",
-        "ps_cmd":       f'powershell -Command "irm{irm_flags} {base}/psdec/{token}/ | iex"',
-        "sh_cmd":       f"curl {curl_flags} {base}/shdec/{token}/ | sh",
+        "ps_cmd":       f'powershell -Command "irm{irm_flags} {base}/api/psdec/{token}/ | iex"',
+        "sh_cmd":       f"curl {curl_flags} {base}/api/shdec/{token}/ | sh",
     }

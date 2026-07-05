@@ -1,7 +1,0 @@
-services:
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile.local
-    ports:
-      - "${PORT:-8443}:443"
