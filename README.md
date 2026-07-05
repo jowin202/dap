@@ -198,24 +198,54 @@ cp /pfad/zu/deinem/privkey.pem   nginx/certs/key.pem
 docker compose restart proxy
 ```
 
-Wird stattdessen ein *externer* Reverse Proxy (anderer nginx, k8s Ingress, Traefik, …)
-vor den `app`-Container gestellt, müssen folgende Header weitergeleitet werden:
+### Eigener Reverse Proxy (Server, auf dem schon einer läuft)
+
+Läuft auf dem Zielserver bereits ein eigener nginx (z. B. weil dort mehrere Domains
+gehostet werden), kann `docker-compose.server.yml` verwendet werden — die enthält
+nur `db` + `app` und published `app` auf `${APP_PORT:-8000}` am Host, ohne eigenen
+`proxy`-Container. Der externe nginx muss dann selbst auf diesen Port proxyen.
+
+> **Wichtigster Punkt: `http2 on;` nicht vergessen.**
+> Der Upload-Mechanismus (`fetch` mit `duplex: 'half'`, siehe
+> [transfer.service.ts](frontend/src/app/services/transfer.service.ts)) braucht HTTP/2
+> zwischen Browser und erstem Hop. Fehlt `http2`, wirkt das im Browser wie ein reiner
+> TLS/ALPN-Fehler (`ERR_ALPN_NEGOTIATION_FAILED` in Chrome) und ist von der eigentlichen
+> Ursache — fehlendes HTTP/2 — leicht zu verwechseln.
+
+Vollständiges Beispiel für einen externen Server-Block:
 
 ```nginx
-proxy_set_header Host              $host;
-proxy_set_header X-Forwarded-Proto $scheme;
-proxy_set_header X-Forwarded-Host  $host;
-proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+server {
+        listen 443 ssl;
+        listen [::]:443 ssl;
+        http2 on;
+        server_name dap.jowin.at;
+
+        ssl_certificate     /etc/nginx/certs/fullchain.pem;
+        ssl_certificate_key /etc/nginx/certs/privkey.pem;
+
+        client_max_body_size    0;
+        proxy_request_buffering off;
+        proxy_buffering         off;
+        proxy_read_timeout      3600s;
+        proxy_send_timeout      3600s;
+
+        location / {
+                proxy_pass http://127.0.0.1:8000/;
+                proxy_set_header Host              $host;
+                proxy_set_header X-Real-IP         $remote_addr;
+                proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto $scheme;
+                proxy_set_header X-Forwarded-Host  $host;
+        }
+}
 ```
 
-Für große Uploads Buffering deaktivieren:
-
-```nginx
-client_max_body_size    0;
-proxy_request_buffering off;
-proxy_buffering         off;
-proxy_read_timeout      3600s;
-```
+Ohne `client_max_body_size 0;` bricht nginx jeden Upload über der Default-Grenze von
+1 MB mit 413 ab — kleine Testdateien fallen darunter nicht auf, echte Dateien schon.
+Ohne `proxy_request_buffering off;` / `proxy_buffering off;` puffert nginx den
+kompletten Request/Response, statt ihn zu streamen (Speicherproblem bei großen Dateien).
+`proxy_read/send_timeout` verhindert, dass lange Transfers am nginx-Default (60s) abreißen.
 
 ---
 
