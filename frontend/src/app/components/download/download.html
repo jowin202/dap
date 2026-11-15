@@ -91,7 +91,7 @@
           </div>
 
           <div class="cmd-row">
-            <span class="cmd-label">PowerShell (Windows 11)</span>
+            <span class="cmd-label">PowerShell 7 (Windows)</span>
             <div class="cmd-box" [class.cmd-box--highlighted]="!fsapiSupported">
               <code>{{ fileInfo!.ps_cmd }}</code>
               <button mat-icon-button (click)="copyToClipboard(fileInfo!.ps_cmd, 'PowerShell-Befehl')">

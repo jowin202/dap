@@ -3,7 +3,7 @@ import { Injectable } from '@angular/core';
 @Injectable({ providedIn: 'root' })
 export class CryptoService {
 
-  async deriveKey(password: string, salt: Uint8Array): Promise<CryptoKey> {
+  async deriveKey(password: string, salt: Uint8Array<ArrayBuffer>): Promise<CryptoKey> {
     const pwKey = await crypto.subtle.importKey(
       'raw',
       new TextEncoder().encode(password),
@@ -20,7 +20,7 @@ export class CryptoService {
     );
   }
 
-  async encryptChunk(key: CryptoKey, chunk: Uint8Array): Promise<Uint8Array> {
+  async encryptChunk(key: CryptoKey, chunk: Uint8Array<ArrayBuffer>): Promise<Uint8Array<ArrayBuffer>> {
     const iv        = crypto.getRandomValues(new Uint8Array(12));
     const encrypted = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, chunk);
     const ciphertext = new Uint8Array(encrypted, 0, encrypted.byteLength - 16);
@@ -30,12 +30,12 @@ export class CryptoService {
     return this.concat([blockLen, iv, tag, ciphertext]);
   }
 
-  async decryptChunk(key: CryptoKey, iv: Uint8Array, tag: Uint8Array, cipher: Uint8Array): Promise<ArrayBuffer> {
+  async decryptChunk(key: CryptoKey, iv: Uint8Array<ArrayBuffer>, tag: Uint8Array, cipher: Uint8Array): Promise<ArrayBuffer> {
     const combined = this.concat([cipher, tag]);
     return crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, combined);
   }
 
-  concat(arrays: Uint8Array[]): Uint8Array {
+  concat(arrays: Uint8Array[]): Uint8Array<ArrayBuffer> {
     const total = arrays.reduce((s, a) => s + a.byteLength, 0);
     const result = new Uint8Array(total);
     let offset = 0;

@@ -13,8 +13,8 @@ Verschlüsselung findet **ausschließlich im Client** statt — der Server sieht
 
 Für lokale Entwicklung zusätzlich:
 
-- Python 3.12+
-- Node.js 20+ (`n 20` oder nvm)
+- Python 3.14+
+- Node.js 24 LTS (oder ≥ 22.22, nvm: `nvm install 24`)
 - Angular CLI (`npm install -g @angular/cli`)
 
 ---
@@ -49,6 +49,21 @@ docker compose up --build
 # App ist erreichbar unter https://dap.jowin.at (oder https://localhost)
 ```
 
+### Variante: fertiges Image aus GitHub
+
+Statt lokal zu bauen, kann das von der GitHub Action gebaute Image
+`ghcr.io/jowin202/dap/app:latest` verwendet werden. `docker-compose.github.yml` ist
+eigenständig (braucht nur `.env`, `nginx/` und `volumes/`), sonst aber identisch zu
+`docker-compose.yml` — Änderungen an einer Datei auch in der anderen nachziehen.
+
+```bash
+docker compose -f docker-compose.github.yml pull
+docker compose -f docker-compose.github.yml up -d
+```
+
+Aktualisieren: Action „Build & Push Docker Image" auf GitHub starten, danach dieselben
+zwei Befehle erneut ausführen.
+
 ### Architektur
 
 Ein `app`-Container enthält Frontend und Backend in einem Image: das Angular-Frontend
@@ -66,7 +81,7 @@ leitet alles an `app:8000` weiter. Der `app`-Container selbst ist nicht am Host 
 > für `dap.jowin.at` ersetzen (gleiche Dateinamen, dann reicht `docker compose restart proxy`).
 > Der Upload-Streaming-Mechanismus (Chrome ReadableStream) setzt HTTP/2 voraus — HTTP/2 erfordert HTTPS.
 
-Beim ersten Start führt der App-Container automatisch `alembic upgrade head` aus.
+Bei jedem Start führt der App-Container automatisch `alembic upgrade head` aus.
 
 ---
 
@@ -160,14 +175,16 @@ gewählten Speicherpfad geschrieben (via File System Access API).
 
 > **Browserunterstützung:** nur Chromium-Browser (Chrome, Edge, Brave) auf dem Desktop.
 
-### Download (Windows 11 — PowerShell)
+### Download (Windows — PowerShell 7.4+)
 
 ```powershell
-powershell -Command "irm https://<host>/api/psdec/<token>/ | iex"
+pwsh -Command "irm https://<host>/api/psdec/<token>/ | iex"
 ```
 
 Lädt ein fertig konfiguriertes PowerShell-Script herunter und führt es aus.
 Kein NuGet, keine externen Abhängigkeiten — nur Inline-C# via `Add-Type`.
+Benötigt PowerShell 7.4 oder neuer (`winget install --id Microsoft.PowerShell -e`);
+das vorinstallierte Windows PowerShell 5.1 kann kein AES-GCM.
 
 ### Download (Linux / macOS — Shell)
 
@@ -201,9 +218,9 @@ docker compose restart proxy
 ### Eigener Reverse Proxy (Server, auf dem schon einer läuft)
 
 Läuft auf dem Zielserver bereits ein eigener nginx (z. B. weil dort mehrere Domains
-gehostet werden), kann `docker-compose.server.yml` verwendet werden — die enthält
-nur `db` + `app` und published `app` auf `${APP_PORT:-8000}` am Host, ohne eigenen
-`proxy`-Container. Der externe nginx muss dann selbst auf diesen Port proxyen.
+gehostet werden), den `proxy`-Service aus `docker-compose.yml` weglassen und stattdessen
+beim `app`-Service `ports: ["127.0.0.1:8000:8000"]` eintragen. Der externe nginx muss
+dann selbst auf diesen Port proxyen.
 
 > **Wichtigster Punkt: `http2 on;` nicht vergessen.**
 > Der Upload-Mechanismus (`fetch` mit `duplex: 'half'`, siehe
@@ -249,6 +266,13 @@ kompletten Request/Response, statt ihn zu streamen (Speicherproblem bei großen 
 
 ---
 
+## Kubernetes
+
+Manifeste und Anleitung liegen in [k8s/](k8s/README.md). Das Image
+`ghcr.io/jowin202/dap/app` wird per GitHub Action (manuell auslösbar) gebaut.
+
+---
+
 ## Umgebungsvariablen
 
 | Variable | Beschreibung | Default |
@@ -289,6 +313,7 @@ Zwei persistente Volumes — beide müssen gesichert werden:
 | `GET` | `/api/info/{token}` | — | Dateiinfos (Name, Größe, Ablauf) |
 | `GET` | `/api/psdec/{token}/` | — | PowerShell-Decode-Script |
 | `GET` | `/api/shdec/{token}/` | — | Shell-Decode-Script |
+| `GET` | `/api/health` | — | Health-Check (für Docker/Kubernetes) |
 | `GET` | `/download/{token}` | — | Angular SPA-Route (Download-Seite im Browser) |
 
 Alles außer `/api/*` wird vom `app`-Container aus dem kompilierten Angular-Build

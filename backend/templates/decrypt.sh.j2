@@ -6,23 +6,11 @@ from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-from cryptography.hazmat.backends import default_backend
 
 url = sys.argv[1]
 
 pw = getpass.getpass("Kennwort: ").encode()
 
-# Selbstsignierte Zertifikate für localhost akzeptieren
-# from urllib.parse import urlparse
-# import ssl
-# _host = urlparse(url).hostname
-# if _host in ('localhost', '127.0.0.1', '::1'):
-#     _ctx = ssl.create_default_context()
-#     _ctx.check_hostname = False
-#     _ctx.verify_mode = ssl.CERT_NONE
-#     resp = urllib.request.urlopen(url, context=_ctx)
-# else:
-#     resp = urllib.request.urlopen(url)
 resp = urllib.request.urlopen(url)
 
 # Datei wird unter ihrem Originalnamen im aktuellen Verzeichnis gespeichert
@@ -30,27 +18,41 @@ cd = resp.headers.get('Content-Disposition', '')
 m  = re.search(r"filename\*=UTF-8''([^;]+)", cd)
 filename = unquote(m.group(1)) if m else os.path.basename(url.rstrip('/'))
 dest = os.path.join(os.getcwd(), os.path.basename(filename))
+tmp  = dest + '.part'  # erst bei Erfolg umbenennen, damit Fehler keine bestehende Datei zerstören
 
 salt = resp.read(16)
+if len(salt) != 16:
+    sys.exit("Ungültige Datei – Salt fehlt")
 
 kdf = PBKDF2HMAC(algorithm=hashes.SHA256(), length=32, salt=salt,
-                 iterations=100000, backend=default_backend())
+                 iterations=100000)
 key = kdf.derive(pw)
 gcm = AESGCM(key)
 
+def read_exactly(n):
+    data = resp.read(n)
+    if len(data) != n:
+        raise EOFError("Unvollständiger Block")
+    return data
+
 try:
-    with open(dest, 'wb') as f:
+    with open(tmp, 'wb') as f:
         while True:
             hdr = resp.read(4)
-            if len(hdr) < 4: break
+            if not hdr: break
+            if len(hdr) < 4: raise EOFError("Unvollständiger Block")
             block_len = struct.unpack('>I', hdr)[0]
-            iv        = resp.read(12)
-            tag       = resp.read(16)
-            cipher    = resp.read(block_len)
+            iv        = read_exactly(12)
+            tag       = read_exactly(16)
+            cipher    = read_exactly(block_len)
             f.write(gcm.decrypt(iv, cipher + tag, None))
+    os.replace(tmp, dest)
 except InvalidTag:
-    os.remove(dest)
-    sys.exit("Wrong Password")
+    os.remove(tmp)
+    sys.exit("Falsches Kennwort oder beschädigte Datei.")
+except EOFError as e:
+    os.remove(tmp)
+    sys.exit(f"Fehler: {e}")
 
 print(f"Fertig: {dest}")
 PYEOF

@@ -1,0 +1,33 @@
+# Passe host und tls secretName an deine Domain an.
+# Voraussetzung: nginx-ingress-controller + cert-manager im Cluster.
+# Falls du ein bestehendes TLS-Secret hast, entferne die cert-manager-Annotation
+# und trage den Secret-Namen direkt unter tls.secretName ein.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: dap
+  namespace: dap
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "0"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-request-buffering: "off"
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    cert-manager.io/cluster-issuer: letsencrypt-prod   # anpassen oder entfernen
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - files.example.com   # <-- deine Domain
+      secretName: dap-tls
+  rules:
+    - host: files.example.com   # <-- deine Domain
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: app
+                port:
+                  number: 8000

@@ -1,5 +1,5 @@
-import { Component } from '@angular/core';
-import { CommonModule } from '@angular/common';
+import { Component, ChangeDetectionStrategy } from '@angular/core';
+
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 
@@ -18,7 +18,6 @@ import { AuthService } from '../../services/auth.service';
   selector: 'app-login',
   standalone: true,
   imports: [
-    CommonModule,
     FormsModule,
     MatCardModule,
     MatFormFieldModule,
@@ -27,9 +26,10 @@ import { AuthService } from '../../services/auth.service';
     MatCheckboxModule,
     MatProgressSpinnerModule,
     MatSnackBarModule,
-    MatIconModule,
-  ],
+    MatIconModule
+],
   templateUrl: './login.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './login.scss',
 })
 export class LoginComponent {

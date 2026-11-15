@@ -1,19 +1,30 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-data
+  namespace: dap
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 5Gi
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: postgres
-  namespace: securetransfer
-  labels:
-    app: postgres
+  name: db
+  namespace: dap
 spec:
   replicas: 1
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
-      app: postgres
+      app: db
   template:
     metadata:
       labels:
-        app: postgres
+        app: db
     spec:
       containers:
         - name: postgres
@@ -26,35 +37,42 @@ spec:
             - name: POSTGRES_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: securetransfer-secrets
+                  name: dap-secrets
                   key: POSTGRES_PASSWORD
-            # PGDATA als Unterverzeichnis verhindert Probleme mit lost+found auf leeren Volumes
-            - name: PGDATA
-              value: /var/lib/postgresql/data/pgdata
           ports:
             - containerPort: 5432
           volumeMounts:
-            - name: postgres-data
+            - name: data
               mountPath: /var/lib/postgresql/data
+          readinessProbe:
+            exec:
+              command: [pg_isready, -U, dap]
+            initialDelaySeconds: 5
+            periodSeconds: 5
           livenessProbe:
             exec:
-              command: ["pg_isready", "-U", "dap"]
+              command: [pg_isready, -U, dap]
             initialDelaySeconds: 20
             periodSeconds: 10
             failureThreshold: 5
-          readinessProbe:
-            exec:
-              command: ["pg_isready", "-U", "dap"]
-            initialDelaySeconds: 5
-            periodSeconds: 5
           resources:
             requests:
               cpu: 100m
               memory: 256Mi
             limits:
-              cpu: 500m
               memory: 512Mi
       volumes:
-        - name: postgres-data
+        - name: data
           persistentVolumeClaim:
             claimName: postgres-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: db
+  namespace: dap
+spec:
+  selector:
+    app: db
+  ports:
+    - port: 5432

@@ -21,7 +21,7 @@ export class AuthService {
     this.setToken(data.access_token);
   }
 
-  // Called once on app startup (see app.config.ts APP_INITIALIZER). Restores
+  // Called once on app startup (see app.config.ts provideAppInitializer). Restores
   // the access token from localStorage on reload without a network round
   // trip; only falls back to the httpOnly refresh-cookie flow (which needs
   // "Angemeldet bleiben" at login) if no valid token is stored.
@@ -47,7 +47,11 @@ export class AuthService {
   }
 
   async logout(): Promise<void> {
-    await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
+    try {
+      await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
+    } catch {
+      // Lokal trotzdem abmelden, auch wenn der Server nicht erreichbar ist
+    }
     this.accessToken = null;
     localStorage.removeItem(STORAGE_KEY);
   }

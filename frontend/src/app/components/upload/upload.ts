@@ -1,4 +1,4 @@
-import { Component } from '@angular/core';
+import { Component, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 
@@ -33,6 +33,7 @@ import { TransferService, UploadResult } from '../../services/transfer.service';
     MatDividerModule,
   ],
   templateUrl: './upload.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './upload.scss',
 })
 export class UploadComponent {
@@ -41,7 +42,6 @@ export class UploadComponent {
   expiresIn  = '24h';
   dragOver   = false;
 
-  encryptPct = 0;
   uploadPct  = 0;
   uploading  = false;
   result: UploadResult | null = null;
@@ -84,7 +84,6 @@ export class UploadComponent {
     if (!this.selectedFile || !this.password) return;
     this.uploading  = true;
     this.result     = null;
-    this.encryptPct = 0;
     this.uploadPct  = 0;
 
     try {

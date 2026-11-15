@@ -1,0 +1,98 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: file-storage
+  namespace: dap
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 20Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: app
+  namespace: dap
+spec:
+  replicas: 1
+  # RWO-Volume kann nicht von zwei Pods gleichzeitig gemountet werden
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: app
+  template:
+    metadata:
+      labels:
+        app: app
+    spec:
+      containers:
+        - name: app
+          # Image enthält Frontend + Backend und führt beim Start "alembic upgrade head" aus
+          image: ghcr.io/jowin202/dap/app:latest
+          imagePullPolicy: Always
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: dap-secrets
+                  key: DATABASE_URL
+            - name: ADMIN_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: dap-secrets
+                  key: ADMIN_TOKEN
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: dap-secrets
+                  key: JWT_SECRET
+            - name: JWT_EXPIRE_HOURS
+              value: "8"
+            - name: REFRESH_EXPIRE_DAYS
+              value: "30"
+            - name: FILES_DIR
+              value: /data/files
+          ports:
+            - containerPort: 8000
+          volumeMounts:
+            - name: files
+              mountPath: /data/files
+          startupProbe:
+            httpGet:
+              path: /api/health
+              port: 8000
+            periodSeconds: 5
+            failureThreshold: 30
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: 8000
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: 8000
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: 200m
+              memory: 256Mi
+            limits:
+              memory: 1Gi
+      volumes:
+        - name: files
+          persistentVolumeClaim:
+            claimName: file-storage
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: app
+  namespace: dap
+spec:
+  selector:
+    app: app
+  ports:
+    - port: 8000

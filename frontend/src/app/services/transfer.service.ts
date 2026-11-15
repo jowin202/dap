@@ -4,21 +4,33 @@ import { AuthService } from './auth.service';
 
 const CHUNK_SIZE = 8 * 1024 * 1024; // 8 MB plaintext per block
 
+const BLOCK_OVERHEAD = 4 + 12 + 16; // Länge + IV + GCM-Tag
+const SALT_SIZE = 16;
+
+/** Liest exakt n Bytes aus einem Stream, ohne den Puffer bei jedem Netzwerk-Chunk neu zu kopieren. */
 class StreamReader {
-  private buf = new Uint8Array(0);
+  private chunks: Uint8Array[] = [];
+  private buffered = 0;
   constructor(private reader: ReadableStreamDefaultReader<Uint8Array>) {}
 
-  async readExactly(n: number): Promise<Uint8Array | null> {
-    while (this.buf.byteLength < n) {
+  async readExactly(n: number): Promise<Uint8Array<ArrayBuffer> | null> {
+    while (this.buffered < n) {
       const { done, value } = await this.reader.read();
       if (done) return null;
-      const merged = new Uint8Array(this.buf.byteLength + value.byteLength);
-      merged.set(this.buf);
-      merged.set(value, this.buf.byteLength);
-      this.buf = merged;
+      this.chunks.push(value);
+      this.buffered += value.byteLength;
     }
-    const result = this.buf.slice(0, n);
-    this.buf = this.buf.slice(n);
+    const result = new Uint8Array(n);
+    let offset = 0;
+    while (offset < n) {
+      const head = this.chunks[0];
+      const take = Math.min(head.byteLength, n - offset);
+      result.set(head.subarray(0, take), offset);
+      offset += take;
+      if (take === head.byteLength) this.chunks.shift();
+      else this.chunks[0] = head.subarray(take);
+    }
+    this.buffered -= n;
     return result;
   }
 }
@@ -47,43 +59,36 @@ export class TransferService {
     const salt = crypto.getRandomValues(new Uint8Array(16));
     const key  = await this.crypto.deriveKey(password, salt);
 
-    let uploaded  = 0;
     const totalSize = file.size;
+    const blocks    = Math.ceil(totalSize / CHUNK_SIZE);
+    const totalOut  = SALT_SIZE + totalSize + blocks * BLOCK_OVERHEAD;
+    const cryptoSvc = this.crypto;
+    let offset = 0;
+    let sent   = SALT_SIZE;
 
-    // Build encrypted stream
-    const fileStream = file.stream();
-    const cryptoSvc  = this.crypto;
-
-    const encryptTransform = new TransformStream<Uint8Array, Uint8Array>({
-      async start(controller) {
+    // Datei in echten 8-MB-Blöcken lesen und verschlüsseln (file.stream() liefert nur ~64-KB-Stücke)
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
         controller.enqueue(salt);
       },
-      async transform(chunk, controller) {
-        // Split chunk into CHUNK_SIZE pieces
-        for (let offset = 0; offset < chunk.byteLength; offset += CHUNK_SIZE) {
-          const slice      = chunk.slice(offset, Math.min(offset + CHUNK_SIZE, chunk.byteLength));
-          const encrypted  = await cryptoSvc.encryptChunk(key, slice);
-          controller.enqueue(encrypted);
+      async pull(controller) {
+        if (offset >= totalSize) {
+          controller.close();
+          return;
         }
+        const plain = new Uint8Array(await file.slice(offset, offset + CHUNK_SIZE).arrayBuffer());
+        offset += plain.byteLength;
+        const encrypted = await cryptoSvc.encryptChunk(key, plain);
+        sent += encrypted.byteLength;
+        onProgress(Math.min(99, Math.round((sent / totalOut) * 100)));
+        controller.enqueue(encrypted);
       },
-    });
-
-    const countingTransform = new TransformStream<Uint8Array, Uint8Array>({
-      transform(chunk, controller) {
-        uploaded += chunk.byteLength;
-        if (totalSize > 0) onProgress(Math.round((uploaded / (totalSize * 1.02)) * 100));
-        controller.enqueue(chunk);
-      },
-    });
-
-    const body = fileStream
-      .pipeThrough(encryptTransform)
-      .pipeThrough(countingTransform);
+    }, { highWaterMark: 1 });
 
     const token = this.auth.getToken();
     const response = await fetch('/api/upload', {
       method: 'POST',
-      // @ts-ignore – duplex needed for streaming body in Chromium
+      // duplex: 'half' ist für Streaming-Bodies nötig, fehlt aber noch in den TS-DOM-Typen
       duplex: 'half',
       body,
       headers: {
@@ -91,7 +96,7 @@ export class TransferService {
         'X-Expires-In': expiresIn,
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
-    });
+    } as RequestInit & { duplex: 'half' });
 
     if (!response.ok) {
       const text = await response.text();
@@ -119,9 +124,9 @@ export class TransferService {
       let received  = 0;
       const sr      = new StreamReader(response.body!.getReader());
 
-      const saltBytes = await sr.readExactly(16);
+      const saltBytes = await sr.readExactly(SALT_SIZE);
       if (!saltBytes) throw new Error('Ungültige Datei – Salt fehlt');
-      received += 16;
+      received += SALT_SIZE;
       const key = await this.crypto.deriveKey(password, saltBytes);
 
       while (true) {
@@ -136,7 +141,7 @@ export class TransferService {
         const plaintext = await this.crypto.decryptChunk(key, iv, tag, cipher);
         await writable.write(plaintext);
 
-        received += 4 + 12 + 16 + blockLen;
+        received += BLOCK_OVERHEAD + blockLen;
         if (total > 0) onProgress(Math.min(99, Math.round((received / total) * 100)));
       }
 

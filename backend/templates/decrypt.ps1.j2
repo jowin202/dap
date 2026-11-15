@@ -1,64 +1,77 @@
-if ($PSVersionTable.PSEdition -ne 'Core') {
-    Write-Host "Dieses Skript benoetigt PowerShell 7 (AES-GCM ist in Windows PowerShell 5.1 nicht verfuegbar)." -ForegroundColor Red
+$ErrorActionPreference = 'Stop'
+
+if ($PSVersionTable.PSEdition -ne 'Core' -or $PSVersionTable.PSVersion -lt [Version]'7.4') {
+    Write-Host "Dieses Skript benoetigt PowerShell 7.4 oder neuer." -ForegroundColor Red
     Write-Host "Installieren mit: winget install --id Microsoft.PowerShell -e" -ForegroundColor Yellow
-    Write-Host "Danach denselben Befehl mit 'pwsh' statt 'powershell' erneut ausfuehren." -ForegroundColor Yellow
+    Write-Host "Danach denselben Befehl mit 'pwsh' erneut ausfuehren." -ForegroundColor Yellow
     exit 1
 }
 
 Add-Type -TypeDefinition @"
+using System;
+using System.IO;
 using System.Security.Cryptography;
-public class AesGcm256 {
-    public static byte[] Decrypt(byte[] key, byte[] iv, byte[] tag, byte[] cipher) {
-        using (var gcm = new AesGcm(key, 16)) {
-            var plain = new byte[cipher.Length];
+public static class DapDecryptor {
+    // Liest exakt buf.Length Bytes; gibt false zurueck, wenn der Stream sauber zu Ende ist.
+    static bool Fill(Stream s, byte[] buf, bool allowEof) {
+        int got = s.ReadAtLeast(buf, buf.Length, false);
+        if (got == 0 && allowEof) return false;
+        if (got < buf.Length) throw new EndOfStreamException("Unvollstaendiger Block");
+        return true;
+    }
+
+    public static void Run(Stream input, Stream output, string password) {
+        var salt = new byte[16];
+        Fill(input, salt, false);
+        var key = Rfc2898DeriveBytes.Pbkdf2(password, salt, 100000, HashAlgorithmName.SHA256, 32);
+        using var gcm = new AesGcm(key, 16);
+        var len = new byte[4]; var iv = new byte[12]; var tag = new byte[16];
+        while (Fill(input, len, true)) {
+            int blockLen = (len[0] << 24) | (len[1] << 16) | (len[2] << 8) | len[3];
+            var cipher = new byte[blockLen];
+            Fill(input, iv, false); Fill(input, tag, false); Fill(input, cipher, false);
+            var plain = new byte[blockLen];
             gcm.Decrypt(iv, cipher, tag, plain);
-            return plain;
+            output.Write(plain, 0, plain.Length);
         }
     }
 }
 "@ -Language CSharp
 
-$url  = "{{ download_url }}"
-$pass = Read-Host -AsSecureString "Kennwort"
+$url   = "{{ download_url }}"
+$pass  = Read-Host -AsSecureString "Kennwort"
+$plain = [Net.NetworkCredential]::new('', $pass).Password
 
-$bstr  = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($pass)
-$plain = [Runtime.InteropServices.Marshal]::PtrToStringAuto($bstr)
-[Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr)
-
-$req      = [Net.HttpWebRequest]::Create($url)
-$resp     = $req.GetResponse()
-$inStream = $resp.GetResponseStream()
+$client = [Net.Http.HttpClient]::new()
+$client.Timeout = [Threading.Timeout]::InfiniteTimeSpan
+$resp = $client.GetAsync($url, [Net.Http.HttpCompletionOption]::ResponseHeadersRead).GetAwaiter().GetResult()
+$null = $resp.EnsureSuccessStatusCode()
 
 # Datei wird unter ihrem Originalnamen im aktuellen Verzeichnis gespeichert
-$cd = $resp.Headers["Content-Disposition"]
-if ($cd -match "filename\*=UTF-8''([^;]+)") {
-    $filename = [Uri]::UnescapeDataString($Matches[1])
-} else {
-    $filename = [IO.Path]::GetFileName($url.TrimEnd('/'))
-}
-$dest = Join-Path (Get-Location).Path (Split-Path -Leaf $filename)
+$filename = $resp.Content.Headers.ContentDisposition.FileNameStar
+if (-not $filename) { $filename = [IO.Path]::GetFileName($url.TrimEnd('/')) }
+$dest = Join-Path (Get-Location).Path ([IO.Path]::GetFileName($filename))
+$tmp  = "$dest.part"   # erst bei Erfolg umbenennen, damit Fehler keine bestehende Datei zerstoeren
 
-$salt = [byte[]]::new(16)
-$inStream.Read($salt, 0, 16) | Out-Null
-
-$kdf = [Security.Cryptography.Rfc2898DeriveBytes]::new($plain, $salt, 100000, "SHA256")
-$key = $kdf.GetBytes(32)
-$plain = $null
-
-$out    = [IO.File]::OpenWrite($dest)
-$lenBuf = [byte[]]::new(4)
-
-while ($inStream.Read($lenBuf, 0, 4) -eq 4) {
-    $blockLen = [Net.IPAddress]::NetworkToHostOrder([BitConverter]::ToInt32($lenBuf, 0))
-    $iv       = [byte[]]::new(12)
-    $tag      = [byte[]]::new(16)
-    $cipher   = [byte[]]::new($blockLen)
-    $inStream.Read($iv,     0, 12)        | Out-Null
-    $inStream.Read($tag,    0, 16)        | Out-Null
-    $inStream.Read($cipher, 0, $blockLen) | Out-Null
-    $decrypted = [AesGcm256]::Decrypt($key, $iv, $tag, $cipher)
-    $out.Write($decrypted, 0, $decrypted.Length)
+$inStream = $resp.Content.ReadAsStream()
+$out      = [IO.File]::Create($tmp)
+$ok       = $false
+try {
+    [DapDecryptor]::Run($inStream, $out, $plain)
+    $ok = $true
+} catch {
+    $err = $_.Exception
+    while ($err.InnerException) { $err = $err.InnerException }
+    if ($err -is [Security.Cryptography.AuthenticationTagMismatchException]) {
+        Write-Host "Falsches Kennwort oder beschaedigte Datei." -ForegroundColor Red
+    } else {
+        Write-Host "Fehler: $($err.Message)" -ForegroundColor Red
+    }
+} finally {
+    $plain = $null
+    $out.Close(); $inStream.Close(); $resp.Dispose(); $client.Dispose()
+    if ($ok) { Move-Item -LiteralPath $tmp -Destination $dest -Force }
+    else     { Remove-Item -LiteralPath $tmp -ErrorAction SilentlyContinue }
 }
 
-$out.Close(); $inStream.Close(); $resp.Close()
-Write-Host "Fertig: $dest" -ForegroundColor Green
+if ($ok) { Write-Host "Fertig: $dest" -ForegroundColor Green }

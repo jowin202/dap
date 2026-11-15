@@ -1,5 +1,5 @@
-import { Component } from '@angular/core';
-import { CommonModule } from '@angular/common';
+import { Component, ChangeDetectionStrategy } from '@angular/core';
+
 import { RouterOutlet, RouterLink, RouterLinkActive, Router } from '@angular/router';
 
 import { MatToolbarModule } from '@angular/material/toolbar';
@@ -13,16 +13,16 @@ import { AuthService } from './services/auth.service';
   selector: 'app-root',
   standalone: true,
   imports: [
-    CommonModule,
     RouterOutlet,
     RouterLink,
     RouterLinkActive,
     MatToolbarModule,
     MatButtonModule,
     MatIconModule,
-    MatMenuModule,
-  ],
+    MatMenuModule
+],
   templateUrl: './app.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './app.scss',
 })
 export class App {

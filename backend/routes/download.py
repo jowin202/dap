@@ -1,4 +1,5 @@
 import os
+import uuid
 from urllib.parse import quote
 from fastapi import APIRouter, Request, HTTPException, Depends
 from fastapi.responses import StreamingResponse, PlainTextResponse
@@ -6,7 +7,7 @@ from jinja2 import Environment, FileSystemLoader
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from utils.url import base_url
+from utils.url import base_url, download_commands
 from utils.db import get_db
 from models.upload import Upload
 
@@ -21,9 +22,13 @@ BLOCK_SIZE = 8 * 1024 * 1024  # 8 MB
 
 
 async def get_valid_upload(token: str, db: AsyncSession) -> Upload:
+    try:
+        token_uuid = uuid.UUID(token)
+    except ValueError:
+        raise HTTPException(404, "Nicht gefunden")
     result = await db.execute(
         select(Upload).where(
-            Upload.token == token,
+            Upload.token == token_uuid,
             Upload.deleted_at.is_(None),
         )
     )
@@ -61,17 +66,11 @@ async def download_file(token: str, db: AsyncSession = Depends(get_db)):
 @router.get("/api/info/{token}")
 async def file_info(token: str, request: Request, db: AsyncSession = Depends(get_db)):
     upload = await get_valid_upload(token, db)
-    base      = base_url(request)
-    host      = request.headers.get("x-forwarded-host", request.headers.get("host", "")).split(":")[0]
-    is_local  = host in ("localhost", "127.0.0.1", "::1")
-    curl_flags = "-sfkL" if is_local else "-sfL"
-    irm_flags  = " -SkipCertificateCheck" if is_local else ""
     return {
         "filename":   upload.filename,
         "size_bytes": upload.size_bytes,
         "expires_at": upload.expires_at.isoformat() if upload.expires_at else None,
-        "ps_cmd":     f'powershell -Command "irm{irm_flags} {base}/api/psdec/{upload.token}/ | iex"',
-        "sh_cmd":     f"curl {curl_flags} {base}/api/shdec/{upload.token}/ | sh",
+        **download_commands(request, str(upload.token)),
     }
 
 
