@@ -38,22 +38,22 @@ ADMIN_TOKEN=langer-zufaelliger-admin-token
 JWT_SECRET=langer-zufaelliger-jwt-secret
 JWT_EXPIRE_HOURS=8
 REFRESH_EXPIRE_DAYS=30
-HTTP_PORT=80
-HTTPS_PORT=443
+APP_PORT=8000
 ```
 
 ```bash
 # 3. Starten
 docker compose up --build
 
-# App ist erreichbar unter https://dap.jowin.at (oder https://localhost)
+# App lauscht auf http://127.0.0.1:8000 – der eigene Reverse Proxy leitet dorthin weiter
+# (siehe Abschnitt „Reverse Proxy / TLS“)
 ```
 
 ### Variante: fertiges Image aus GitHub
 
 Statt lokal zu bauen, kann das von der GitHub Action gebaute Image
 `ghcr.io/jowin202/dap/app:latest` verwendet werden. `docker-compose.github.yml` ist
-eigenständig (braucht nur `.env`, `nginx/` und `volumes/`), sonst aber identisch zu
+eigenständig (braucht nur `.env` und `volumes/`), sonst aber identisch zu
 `docker-compose.yml` — Änderungen an einer Datei auch in der anderen nachziehen.
 
 ```bash
@@ -71,15 +71,8 @@ wird im Docker-Build kompiliert und landet als statischer Ordner (`backend/stati
 FastAPI-Backend-Container. FastAPI liefert alles unter `/api/*` selbst aus, alle anderen
 Pfade werden aus dem statischen Ordner bedient (SPA-Fallback auf `index.html`).
 
-Ein separater `proxy`-Container (nginx) terminiert TLS für die Domain `dap.jowin.at` und
-leitet alles an `app:8000` weiter. Der `app`-Container selbst ist nicht am Host exponiert.
-
-> **Zertifikat:** `nginx/certs/cert.pem` + `nginx/certs/key.pem` sind selbstsignierte
-> Platzhalter-Dateien. Der Browser zeigt deshalb beim ersten Aufruf eine
-> Sicherheitswarnung — einmalig mit „Trotzdem fortfahren" / „Advanced → Proceed" bestätigen.
-> Für ein echtes Deployment beide Dateien durch ein gültiges Zertifikat (z. B. Let's Encrypt)
-> für `dap.jowin.at` ersetzen (gleiche Dateinamen, dann reicht `docker compose restart proxy`).
-> Der Upload-Streaming-Mechanismus (Chrome ReadableStream) setzt HTTP/2 voraus — HTTP/2 erfordert HTTPS.
+Der `app`-Container spricht nur HTTP und ist ausschließlich auf `127.0.0.1:8000` gebunden.
+TLS und HTTP/2 übernimmt ein vorgeschalteter Reverse Proxy (siehe unten).
 
 Bei jedem Start führt der App-Container automatisch `alembic upgrade head` aus.
 
@@ -90,7 +83,7 @@ Bei jedem Start führt der App-Container automatisch `alembic upgrade head` aus.
 Upload ist nur für eingeloggte Nutzer möglich. User werden per API angelegt:
 
 ```bash
-curl -k -X POST https://localhost/api/auth/create_user \
+curl -X POST http://127.0.0.1:8000/api/auth/create_user \
   -H "Authorization: Bearer <ADMIN_TOKEN>" \
   -H "Content-Type: application/json" \
   -d '{"username": "alice", "password": "sicher123"}'
@@ -202,25 +195,13 @@ pip install cryptography
 
 ## Reverse Proxy / TLS
 
-Der `proxy`-Service (`nginx/nginx.conf`) ist bereits fertig konfiguriert und übernimmt
-TLS-Terminierung für `dap.jowin.at`, HTTP→HTTPS-Redirect sowie die für große Uploads
-nötigen Timeouts/Buffering-Einstellungen. Der `app`-Container selbst spricht nur HTTP
-und ist nicht am Host exponiert.
+Das Projekt bringt keinen eigenen Proxy mit. Der `app`-Container lauscht nur per HTTP auf
+`127.0.0.1:${APP_PORT:-8000}`; ein vorgeschalteter Reverse Proxy muss TLS terminieren und
+HTTP/2 sprechen. Beides ist Pflicht:
 
-**Echtes Zertifikat einspielen:**
-
-```bash
-cp /pfad/zu/deinem/fullchain.pem nginx/certs/cert.pem
-cp /pfad/zu/deinem/privkey.pem   nginx/certs/key.pem
-docker compose restart proxy
-```
-
-### Eigener Reverse Proxy (Server, auf dem schon einer läuft)
-
-Läuft auf dem Zielserver bereits ein eigener nginx (z. B. weil dort mehrere Domains
-gehostet werden), den `proxy`-Service aus `docker-compose.yml` weglassen und stattdessen
-beim `app`-Service `ports: ["127.0.0.1:8000:8000"]` eintragen. Der externe nginx muss
-dann selbst auf diesen Port proxyen.
+- **HTTPS:** Die WebCrypto-API (`crypto.subtle`) ist im Browser nur in einem Secure Context
+  (HTTPS oder `localhost`) verfügbar — ohne TLS funktioniert die Verschlüsselung nicht.
+- **HTTP/2:** uvicorn spricht kein HTTP/2, der Streaming-Upload braucht es aber (siehe unten).
 
 > **Wichtigster Punkt: `http2 on;` nicht vergessen.**
 > Der Upload-Mechanismus (`fetch` mit `duplex: 'half'`, siehe
@@ -248,7 +229,7 @@ server {
         proxy_send_timeout      3600s;
 
         location / {
-                proxy_pass http://127.0.0.1:8000/;
+                proxy_pass http://127.0.0.1:8000;
                 proxy_set_header Host              $host;
                 proxy_set_header X-Real-IP         $remote_addr;
                 proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
@@ -283,8 +264,7 @@ Manifeste und Anleitung liegen in [k8s/](k8s/README.md). Das Image
 | `JWT_EXPIRE_HOURS` | Gültigkeit des Access Tokens | `8` |
 | `REFRESH_EXPIRE_DAYS` | Gültigkeit des Refresh-Token Cookies | `30` |
 | `FILES_DIR` | Verzeichnis für verschlüsselte Uploads | `/data/files` |
-| `HTTP_PORT` | (nur Docker Compose) Host-Port für HTTP→HTTPS-Redirect | `80` |
-| `HTTPS_PORT` | (nur Docker Compose) Host-Port für HTTPS | `443` |
+| `APP_PORT` | (nur Docker Compose) Host-Port auf `127.0.0.1`, auf den der Reverse Proxy weiterleitet | `8000` |
 | `POSTGRES_PASSWORD` | (nur Docker Compose) Datenbankpasswort | — (Pflicht) |
 
 ---
