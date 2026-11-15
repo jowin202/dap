@@ -1,4 +1,5 @@
 import os
+import re
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
@@ -35,6 +36,14 @@ STATIC_DIR = os.path.realpath(
 )
 
 
+# Angular-Build-Dateien tragen einen Content-Hash im Namen (main-2NKR4YTI.js) und ändern
+# sich nie – dürfen also dauerhaft gecacht werden. index.html dagegen muss bei jedem Aufruf
+# neu validiert werden, sonst lädt der Browser nach einem Update veraltete Chunk-Namen.
+_IMMUTABLE = {"Cache-Control": "public, max-age=31536000, immutable"}
+_NO_CACHE  = {"Cache-Control": "no-cache"}
+_HASHED    = re.compile(r"-[A-Z0-9]{8}\.(js|css)$")
+
+
 @app.api_route("/{full_path:path}", methods=["GET", "HEAD"])
 async def spa(full_path: str):
     if full_path.startswith("api/"):
@@ -42,5 +51,10 @@ async def spa(full_path: str):
     candidate = os.path.realpath(os.path.join(STATIC_DIR, full_path))
     # Nur Dateien innerhalb von STATIC_DIR ausliefern (Schutz gegen "../"-Pfade)
     if full_path and candidate.startswith(STATIC_DIR + os.sep) and os.path.isfile(candidate):
-        return FileResponse(candidate)
-    return FileResponse(os.path.join(STATIC_DIR, "index.html"))
+        headers = _IMMUTABLE if _HASHED.search(full_path) else _NO_CACHE
+        return FileResponse(candidate, headers=headers)
+    # Fehlende Dateien (z. B. Chunks eines alten Builds) als 404 melden statt index.html
+    # auszuliefern – sonst scheitert der Browser mit einem irreführenden MIME-Type-Fehler.
+    if "." in os.path.basename(full_path):
+        raise HTTPException(404)
+    return FileResponse(os.path.join(STATIC_DIR, "index.html"), headers=_NO_CACHE)

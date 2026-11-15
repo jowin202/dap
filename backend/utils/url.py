@@ -26,14 +26,18 @@ def base_url(request: Request) -> str:
     return f"{proto}://{host}"
 
 
+def curl_flags(request: Request) -> str:
+    """Bei localhost wird die Zertifikatsprüfung abgeschaltet (selbstsigniertes Zertifikat)."""
+    return "-sfkL" if _host(request).split(":")[0] in _LOCAL_HOSTS else "-sfL"
+
+
 def download_commands(request: Request, token: str) -> dict[str, str]:
     """Fertige Einzeiler für PowerShell und Shell. Bei localhost werden Zertifikatsprüfungen
     abgeschaltet, weil dort typischerweise ein selbstsigniertes Zertifikat verwendet wird."""
     base     = base_url(request)
     is_local = _host(request).split(":")[0] in _LOCAL_HOSTS
-    curl_flags = "-sfkL" if is_local else "-sfL"
     irm_flags  = " -SkipCertificateCheck" if is_local else ""
     return {
         "ps_cmd": f'pwsh -Command "irm{irm_flags} {base}/api/psdec/{token}/ | iex"',
-        "sh_cmd": f"curl {curl_flags} {base}/api/shdec/{token}/ | sh",
+        "sh_cmd": f"curl {curl_flags(request)} {base}/api/shdec/{token}/ | sh",
     }

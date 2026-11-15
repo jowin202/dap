@@ -7,7 +7,7 @@ from jinja2 import Environment, FileSystemLoader
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from utils.url import base_url, download_commands
+from utils.url import base_url, curl_flags, download_commands
 from utils.db import get_db
 from models.upload import Upload
 
@@ -84,7 +84,16 @@ async def powershell_script(token: str, request: Request, db: AsyncSession = Dep
 
 @router.get("/api/shdec/{token}/")
 async def shell_script(token: str, request: Request, db: AsyncSession = Depends(get_db)):
-    await get_valid_upload(token, db)
-    url  = f"{base_url(request)}/api/download/{token}"
-    tmpl = jinja.get_template("decrypt.sh.j2")
-    return PlainTextResponse(tmpl.render(download_url=url), media_type="text/plain")
+    upload = await get_valid_upload(token, db)
+    url    = f"{base_url(request)}/api/download/{token}"
+    tmpl   = jinja.get_template("decrypt.sh.j2")
+    # Dateiname stammt vom Uploader: vollständig URL-kodiert enthält er nur [A-Za-z0-9_.~%-]
+    # und kann daher weder aus dem Shell-Argument noch aus dem Script ausbrechen.
+    return PlainTextResponse(
+        tmpl.render(
+            download_url=url,
+            filename=quote(upload.filename, safe=""),
+            curl_flags=curl_flags(request),
+        ),
+        media_type="text/plain",
+    )

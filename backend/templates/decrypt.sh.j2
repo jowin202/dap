@@ -1,28 +1,32 @@
 #!/bin/sh
-python3 - "{{ download_url }}" <<'PYEOF'
-import sys, os, re, struct, getpass, urllib.request
+python3 - "{{ download_url }}" "{{ filename }}" "{{ curl_flags }}" <<'PYEOF'
+import sys, os, struct, getpass, subprocess
 from urllib.parse import unquote
 from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
-url = sys.argv[1]
+url, filename, curl_flags = sys.argv[1], unquote(sys.argv[2]), sys.argv[3]
 
 pw = getpass.getpass("Kennwort: ").encode()
 
-resp = urllib.request.urlopen(url)
+# Download über curl statt urllib: Python von python.org kennt unter macOS die System-
+# Zertifikate nicht (CERTIFICATE_VERIFY_FAILED), curl dagegen schon.
+proc = subprocess.Popen(["curl", curl_flags, url], stdout=subprocess.PIPE)
+resp = proc.stdout
 
 # Datei wird unter ihrem Originalnamen im aktuellen Verzeichnis gespeichert
-cd = resp.headers.get('Content-Disposition', '')
-m  = re.search(r"filename\*=UTF-8''([^;]+)", cd)
-filename = unquote(m.group(1)) if m else os.path.basename(url.rstrip('/'))
-dest = os.path.join(os.getcwd(), os.path.basename(filename))
+dest = os.path.join(os.getcwd(), os.path.basename(filename) or "download.bin")
 tmp  = dest + '.part'  # erst bei Erfolg umbenennen, damit Fehler keine bestehende Datei zerstören
+
+def fail(msg):
+    proc.kill()
+    sys.exit(msg)
 
 salt = resp.read(16)
 if len(salt) != 16:
-    sys.exit("Ungültige Datei – Salt fehlt")
+    fail("Download fehlgeschlagen oder ungültige Datei – Salt fehlt")
 
 kdf = PBKDF2HMAC(algorithm=hashes.SHA256(), length=32, salt=salt,
                  iterations=100000)
@@ -46,13 +50,15 @@ try:
             tag       = read_exactly(16)
             cipher    = read_exactly(block_len)
             f.write(gcm.decrypt(iv, cipher + tag, None))
+    if proc.wait() != 0:
+        raise EOFError(f"Download abgebrochen (curl Exit-Code {proc.returncode})")
     os.replace(tmp, dest)
 except InvalidTag:
     os.remove(tmp)
-    sys.exit("Falsches Kennwort oder beschädigte Datei.")
+    fail("Falsches Kennwort oder beschädigte Datei.")
 except EOFError as e:
     os.remove(tmp)
-    sys.exit(f"Fehler: {e}")
+    fail(f"Fehler: {e}")
 
 print(f"Fertig: {dest}")
 PYEOF
